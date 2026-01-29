@@ -1,10 +1,8 @@
-# main.py
 import os
-import logging
 import re
+import logging
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.constants import ParseMode
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -17,107 +15,53 @@ from telegram.ext import (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("panoptika_bot")
 
-# ====== НАСТРОЙКИ ======
+# ========== НАСТРОЙКИ ==========
 CLINIC_NAME = "ПанОптика"
 
-BOOKING_URL = "https://online-zapis.com/online/00691"
-INSTAGRAM_URL = "https://www.instagram.com/panoptika_brest?igsh=MTlmYndrbXlwZ3hmbA=="
-SITE_URL = "https://panoptika.by/"
+def clean_url(u: str) -> str:
+    return (u or "").strip().replace("\n", "").replace("\r", "")
 
-YANDEX_MAPS_URL = "https://yandex.ru/maps/org/229002285621?si=r8mrjp7wcrya9x5p9a20t6qgc8"
-YANDEX_REVIEW_URL = "https://yandex.ru/maps/org/229002285621?si=r8mrjp7wcrya9x5p9a20t6qgc8"
+BOOKING_URL = clean_url("https://online-zapis.com/online/00691")
+INSTAGRAM_URL = clean_url("https://www.instagram.com/panoptika_brest?igsh=MTlmYndrbXlwZ3hmbA==")
+SITE_URL = clean_url("https://panoptika.by/")
+
+YANDEX_MAPS_URL = clean_url("https://yandex.ru/maps/org/229002285621?si=r8mrjp7wcrya9x5p9a20t6qgc8")
+YANDEX_REVIEW_URL = clean_url("https://yandex.ru/maps/org/229002285621/reviews/")
 
 ADDRESS_TEXT = "Брест, ул. Пушкинская 6/1"
+
 PHONE_RAW = "+375336518747"          # для tel:
-PHONE_PRETTY = "+375 33 651-87-47"   # для отображения
+PHONE_PRETTY = "+375 33 651-87-47"   # как показывать людям
 
 # callback data
-CB_BOOK = "book"
-CB_CONTACTS = "contacts"
-CB_INSTAGRAM = "instagram"
-CB_REVIEW = "review"
-CB_WRITE_ADMIN = "write_admin"
-CB_BACK = "back"
+CB_CALL = "CALL"
+CB_WRITE_ADMIN = "WRITE_ADMIN"
+CB_BACK = "BACK"
 
-# user_id -> ждём сообщение админу
+# режим ожидания сообщения админу
 WAITING_FOR_ADMIN = set()
 
-# ====== ТЕКСТЫ ======
-def start_text() -> str:
-    return (
-        f"👓 *{CLINIC_NAME}*\n"
-        "Онлайн-запись к врачу и контакты.\n\n"
-        "Выберите действие ниже:"
-    )
-
-def contacts_text() -> str:
-    return (
-        f"*Контакты {CLINIC_NAME}*\n\n"
-        f"📍 Адрес: {ADDRESS_TEXT}\n"
-        f"📞 Телефон: <a href='tel:{PHONE_RAW}'>{PHONE_PRETTY}</a>\n\n"
-        f"🌐 Сайт: {SITE_URL}\n"
-        f"📸 Instagram: {INSTAGRAM_URL}\n"
-    )
-
-def booking_text() -> str:
-    return (
-        "*Запись к врачу*\n\n"
-        "Нажмите кнопку ниже — откроется онлайн-запись.\n"
-        "Или напишите администратору прямо здесь."
-    )
-
-def instagram_text() -> str:
-    return "*Instagram*\n\nНажмите кнопку ниже, чтобы открыть профиль."
-
-def review_text() -> str:
-    return (
-        "*Отзывы*\n\n"
-        "Оставьте отзыв на Яндекс.Картах и получите скидку 10% на заказ.\n"
-        "После отзыва можете написать админу — подтвердим скидку."
-    )
-
-# ====== КЛАВИАТУРЫ ======
+# ========== КЛАВИАТУРЫ ==========
 def main_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📅 Запись к врачу", callback_data=CB_BOOK)],
-        [InlineKeyboardButton("☎️ Контакты", callback_data=CB_CONTACTS)],
-        [InlineKeyboardButton("📸 Instagram", callback_data=CB_INSTAGRAM)],
-        [InlineKeyboardButton("⭐ Отзыв на Яндекс.Картах (-10%)", callback_data=CB_REVIEW)],
+        [InlineKeyboardButton("📅 Запись к врачу", url=BOOKING_URL)],  # сразу на сайт
+        [InlineKeyboardButton("📞 Позвонить", callback_data=CB_CALL)],
+        [InlineKeyboardButton("📸 Instagram", url=INSTAGRAM_URL)],
+        [InlineKeyboardButton("⭐ Отзыв на Яндекс.Картах (−10%)", url=YANDEX_REVIEW_URL)],
         [InlineKeyboardButton("✍️ Написать администратору", callback_data=CB_WRITE_ADMIN)],
     ])
 
 def back_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Назад", callback_data=CB_BACK)]])
 
-def contacts_keyboard() -> InlineKeyboardMarkup:
+def call_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"📞 Позвонить {PHONE_PRETTY}", url=f"tel:{PHONE_RAW}")],
-        [InlineKeyboardButton("🗺 Открыть Яндекс.Карты", url=YANDEX_MAPS_URL)],
-        [InlineKeyboardButton("✍️ Написать администратору", callback_data=CB_WRITE_ADMIN)],
+        [InlineKeyboardButton(f"📞 Набрать {PHONE_PRETTY}", url=f"tel:{PHONE_RAW}")],
+        [InlineKeyboardButton("🗺 Яндекс.Карты", url=YANDEX_MAPS_URL)],
         [InlineKeyboardButton("⬅️ Назад", callback_data=CB_BACK)],
     ])
 
-def booking_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📅 Открыть онлайн-запись", url=BOOKING_URL)],
-        [InlineKeyboardButton("✍️ Написать администратору", callback_data=CB_WRITE_ADMIN)],
-        [InlineKeyboardButton("⬅️ Назад", callback_data=CB_BACK)],
-    ])
-
-def instagram_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📸 Открыть Instagram", url=INSTAGRAM_URL)],
-        [InlineKeyboardButton("⬅️ Назад", callback_data=CB_BACK)],
-    ])
-
-def review_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("⭐ Оставить отзыв на Яндекс.Картах", url=YANDEX_REVIEW_URL)],
-        [InlineKeyboardButton("✍️ Написать администратору", callback_data=CB_WRITE_ADMIN)],
-        [InlineKeyboardButton("⬅️ Назад", callback_data=CB_BACK)],
-    ])
-
-# ====== ХЕЛПЕРЫ ======
+# ========== ХЕЛПЕРЫ ==========
 def get_admin_chat_id() -> int:
     val = os.getenv("ADMIN_CHAT_ID", "").strip()
     if not val:
@@ -131,120 +75,84 @@ def is_admin_chat(update: Update) -> bool:
     admin_id = get_admin_chat_id()
     return admin_id != 0 and update.effective_chat and update.effective_chat.id == admin_id
 
-def extract_user_id_from_text(text: str) -> int:
-    """
-    Ищем user_id в тексте админского сообщения, которое бот отправляет админу.
-    Формат: "🆔 123456789"
-    """
+def extract_user_id_from_forwarded(text: str) -> int:
+    # ищем "🆔 123456"
     if not text:
         return 0
     m = re.search(r"🆔\s*(\d+)", text)
     return int(m.group(1)) if m else 0
 
-# ====== КОМАНДЫ ======
-async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ========== КОМАНДЫ ==========
+async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     WAITING_FOR_ADMIN.discard(update.effective_user.id)
-    await update.message.reply_text(
-        start_text(),
-        reply_markup=main_keyboard(),
-        parse_mode=ParseMode.MARKDOWN,
-        disable_web_page_preview=True,
+    text = (
+        f"👓 {CLINIC_NAME}\n\n"
+        f"📍 Адрес: {ADDRESS_TEXT}\n"
+        f"📞 Телефон: {PHONE_PRETTY}\n\n"
+        "Выберите действие кнопками ниже 👇"
     )
+    await update.message.reply_text(text, reply_markup=main_keyboard(), disable_web_page_preview=True)
 
-async def cmd_myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def cmd_myid(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(f"Ваш chat_id: {update.effective_chat.id}")
 
-# (оставим как запасной вариант)
-async def cmd_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin_chat(update):
-        return
-    if len(context.args) < 2:
-        await update.message.reply_text("Используй: /reply <user_id> текст")
-        return
-    user_id = int(context.args[0])
-    reply_text = " ".join(context.args[1:])
-    await context.bot.send_message(chat_id=user_id, text=f"✅ Ответ администратора:\n\n{reply_text}")
-    await update.message.reply_text("Отправлено клиенту ✅")
-
-# ====== КНОПКИ ======
-async def on_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ========== КНОПКИ ==========
+async def on_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
-    data = query.data
 
-    if data == CB_CONTACTS:
-        WAITING_FOR_ADMIN.discard(query.from_user.id)
+    uid = query.from_user.id
+
+    if query.data == CB_CALL:
+        WAITING_FOR_ADMIN.discard(uid)
+        text = (
+            f"📞 Позвонить в {CLINIC_NAME}\n\n"
+            f"Номер: {PHONE_PRETTY}\n\n"
+            "Нажмите кнопку «Набрать» ниже."
+        )
         await query.edit_message_text(
-            contacts_text(),
-            reply_markup=contacts_keyboard(),
-            parse_mode=ParseMode.HTML,
-            disable_web_page_preview=True,
+            text=text,
+            reply_markup=call_keyboard(),
+            disable_web_page_preview=True
         )
         return
 
-    if data == CB_BOOK:
-        WAITING_FOR_ADMIN.discard(query.from_user.id)
-        await query.edit_message_text(
-            booking_text(),
-            reply_markup=booking_keyboard(),
-            parse_mode=ParseMode.MARKDOWN,
-            disable_web_page_preview=True,
+    if query.data == CB_WRITE_ADMIN:
+        WAITING_FOR_ADMIN.add(uid)
+        text = (
+            "✍️ Напишите пожалуйста сообщение, администратор ответит вам как можно скорее.\n\n"
+            "Например: «Хочу записаться на завтра после 18:00» или «Подскажите стоимость линз».\n\n"
+            "Чтобы отменить — нажмите «Назад»."
         )
+        await query.edit_message_text(text=text, reply_markup=back_keyboard())
         return
 
-    if data == CB_INSTAGRAM:
-        WAITING_FOR_ADMIN.discard(query.from_user.id)
-        await query.edit_message_text(
-            instagram_text(),
-            reply_markup=instagram_keyboard(),
-            parse_mode=ParseMode.MARKDOWN,
-            disable_web_page_preview=True,
+    if query.data == CB_BACK:
+        WAITING_FOR_ADMIN.discard(uid)
+        text = (
+            f"👓 {CLINIC_NAME}\n\n"
+            f"📍 Адрес: {ADDRESS_TEXT}\n"
+            f"📞 Телефон: {PHONE_PRETTY}\n\n"
+            "Выберите действие кнопками ниже 👇"
         )
-        return
-
-    if data == CB_REVIEW:
-        WAITING_FOR_ADMIN.discard(query.from_user.id)
         await query.edit_message_text(
-            review_text(),
-            reply_markup=review_keyboard(),
-            parse_mode=ParseMode.MARKDOWN,
-            disable_web_page_preview=True,
-        )
-        return
-
-    if data == CB_WRITE_ADMIN:
-        WAITING_FOR_ADMIN.add(query.from_user.id)
-        await query.edit_message_text(
-            "✍️ Напишите одним сообщением, что нужно (время/услуга/вопрос). "
-            "Я передам администратору.\n\n"
-            "Чтобы отменить — нажмите «Назад».",
-            reply_markup=back_keyboard(),
-            parse_mode=ParseMode.MARKDOWN,
-        )
-        return
-
-    if data == CB_BACK:
-        WAITING_FOR_ADMIN.discard(query.from_user.id)
-        await query.edit_message_text(
-            start_text(),
+            text=text,
             reply_markup=main_keyboard(),
-            parse_mode=ParseMode.MARKDOWN,
-            disable_web_page_preview=True,
+            disable_web_page_preview=True
         )
         return
 
-# ====== СООБЩЕНИЯ ОТ КЛИЕНТОВ (в админ) ======
-async def on_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ========== КЛИЕНТ → АДМИН ==========
+async def on_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
-    chat = update.effective_chat
-    if not user or not chat or not update.message:
+    if not user or not update.message or not update.message.text:
         return
 
-    # клиент не в режиме "написать админу" → просто меню
+    # если не в режиме "написать админу" — просто показываем меню
     if user.id not in WAITING_FOR_ADMIN:
         await update.message.reply_text(
             "Выберите действие кнопками ниже 🙂",
-            reply_markup=main_keyboard(),
+            reply_markup=main_keyboard()
         )
         return
 
@@ -253,77 +161,71 @@ async def on_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     admin_id = get_admin_chat_id()
     if admin_id == 0:
         await update.message.reply_text(
-            "⚠️ Администратор пока не подключен. Попробуйте позже.",
-            reply_markup=main_keyboard(),
+            "⚠️ Администратор пока не подключён. Попробуйте позже.",
+            reply_markup=main_keyboard()
         )
         return
 
     text = update.message.text.strip()
-
-    msg = (
+    msg_to_admin = (
         "✉️ Сообщение от клиента\n"
         f"👤 {user.full_name} (@{user.username})\n"
         f"🆔 {user.id}\n\n"
         f"{text}\n\n"
-        "⬇️ *Чтобы ответить клиенту — просто нажми Reply на это сообщение и напиши текст.*"
+        "⬇️ Чтобы ответить клиенту — нажмите Reply на это сообщение и напишите ответ."
     )
 
-    await context.bot.send_message(
-        chat_id=admin_id,
-        text=msg,
-        parse_mode=ParseMode.MARKDOWN,
-        disable_web_page_preview=True,
-    )
-
+    await context.bot.send_message(chat_id=admin_id, text=msg_to_admin)
     await update.message.reply_text(
-        "✅ Передал администратору. Он ответит вам здесь в чате.",
-        reply_markup=main_keyboard(),
+        "✅ Сообщение отправлено администратору. Он ответит вам здесь в чате.",
+        reply_markup=main_keyboard()
     )
 
-# ====== СООБЩЕНИЯ ОТ АДМИНА (Reply → клиенту) ======
-async def on_admin_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ========== АДМИН REPLY → КЛИЕНТ ==========
+async def on_admin_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    # срабатывает только на Reply-сообщения админа (см. фильтр в main())
     if not is_admin_chat(update):
         return
-    if not update.message or not update.message.text:
-        return
-
-    # Если админ НЕ ответом (Reply) — ничего не делаем (чтобы не было случайных отправок)
-    if not update.message.reply_to_message:
+    if not update.message or not update.message.text or not update.message.reply_to_message:
         return
 
     original = update.message.reply_to_message.text or ""
-    user_id = extract_user_id_from_text(original)
+    user_id = extract_user_id_from_forwarded(original)
     if user_id == 0:
-        await update.message.reply_text("Не вижу 🆔 user_id в сообщении, на которое ты отвечаешь.")
+        await update.message.reply_text("Не нашёл 🆔 пользователя в сообщении, на которое ты отвечаешь.")
         return
 
-    admin_reply = update.message.text.strip()
-
+    reply_text = update.message.text.strip()
     await context.bot.send_message(
         chat_id=user_id,
-        text=f"✅ Ответ администратора:\n\n{admin_reply}",
-        disable_web_page_preview=True,
+        text=f"✅ Ответ администратора:\n\n{reply_text}",
+        disable_web_page_preview=True
     )
-
     await update.message.reply_text("Отправлено клиенту ✅")
 
-# ====== ЗАПУСК ======
+# ========== ЗАПУСК ==========
 def main() -> None:
     token = os.getenv("BOT_TOKEN", "").strip()
     if not token:
-        raise SystemExit("Ошибка: не найден BOT_TOKEN. Добавь переменную BOT_TOKEN в Railway.")
+        raise SystemExit("BOT_TOKEN не задан. Добавь BOT_TOKEN в Railway → Variables.")
 
     app = Application.builder().token(token).build()
 
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("myid", cmd_myid))
-    app.add_handler(CommandHandler("reply", cmd_reply))  # запасной способ
 
     app.add_handler(CallbackQueryHandler(on_buttons))
 
-    # ВАЖНО: сначала ловим сообщения админа, потом клиентов
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_admin_text))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_user_text))
+    # 1) Админские ответы Reply — отдельно и первым
+    app.add_handler(
+        MessageHandler(filters.REPLY & filters.TEXT & ~filters.COMMAND, on_admin_reply),
+        group=0
+    )
+    # 2) Все обычные сообщения пользователей
+    app.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, on_user_text),
+        group=1
+    )
 
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
