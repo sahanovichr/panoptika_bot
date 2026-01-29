@@ -1,242 +1,262 @@
 import os
-import logging
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.constants import ParseMode
+from typing import Dict, Optional
+
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Update,
+)
 from telegram.ext import (
     Application,
-    CommandHandler,
     CallbackQueryHandler,
+    CommandHandler,
     ContextTypes,
     MessageHandler,
     filters,
 )
 
-# -------------------------
-# НАСТРОЙКИ
-# -------------------------
-CLINIC_NAME = "ПанОптика"
+# =========================
+# НАСТРОЙКИ (можно менять)
+# =========================
+
+BOT_TITLE = "👓 ПанОптика"
+GREETING_SUBTITLE = "Онлайн-запись к врачу и контакты."
+WORK_HOURS = "Пн–Пт 10:00–20:00 · Сб–Вс 10:00–18:00"
 
 BOOKING_URL = "https://online-zapis.com/online/00691"
-INSTAGRAM_URL = "https://www.instagram.com/panoptika_brest?igsh=MTlmYndrbXlwZ3hmbA=="
-YANDEX_REVIEW_URL = "https://yandex.ru/maps/org/229002285621?si=r8mrjp7wcrya9x5p9a20t6qgc8"
 YANDEX_MAPS_URL = "https://yandex.ru/maps/org/229002285621?si=r8mrjp7wcrya9x5p9a20t6qgc8"
+INSTAGRAM_URL = "https://www.instagram.com/panoptika_brest?igsh=MTlmYndrbXlwZ3hmbA=="
+# Можно оставить ту же ссылку, или заменить на ссылку именно на отзывы (если найдёшь отдельную страницу reviews)
+REVIEW_URL = "https://yandex.ru/maps/org/229002285621?si=r8mrjp7wcrya9x5p9a20t6qgc8"
 
-# ВАЖНО: только цифры и плюс (без пробелов, дефисов, текста) — максимально кликабельно
-PHONE_CLICK = "+375336518747"
+PHONE_PRETTY = "+375 33 651-87-47"
+PHONE_DIGITS = "+375336518747"
+
+# Твой admin chat_id (можно также задать переменной окружения ADMIN_CHAT_ID в Railway)
+DEFAULT_ADMIN_CHAT_ID = 6805556593
 
 # Callback data
-CB_CALL = "call"
-CB_WRITE_ADMIN = "write_admin"
-CB_STOP_REPLY = "stop_reply"
-CB_REPLY_PREFIX = "reply:"  # reply:<chat_id>
+CB_CALL = "CALL"
+CB_WRITE_ADMIN = "WRITE_ADMIN"
+CB_SETCHAT_PREFIX = "SETCHAT:"       # SETCHAT:<chat_id>
+CB_MENU = "MENU"
 
-# -------------------------
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-)
-logger = logging.getLogger("panoptika_bot")
+# Ключи хранения состояния в памяти (Railway может перезапускать — это нормально)
+BOTDATA_ACTIVE_CHAT = "admin_active_chat_id"
+BOTDATA_ADMIN_MSG_MAP = "admin_msgid_to_userchat"  # {admin_msg_id: user_chat_id}
 
 
-def admin_id() -> int:
-    v = os.getenv("ADMIN_CHAT_ID", "").strip()
-    return int(v) if v.isdigit() else 0
+# =========================
+# ТЕКСТЫ / КНОПКИ
+# =========================
 
+def start_text() -> str:
+    # Время работы — только здесь, как ты и просил
+    return (
+        f"{BOT_TITLE}\n"
+        f"{GREETING_SUBTITLE}\n\n"
+        f"⏰ Время работы: {WORK_HOURS}\n\n"
+        "Выберите действие ниже 👇"
+    )
 
-def is_admin(chat_id: int) -> bool:
-    return chat_id == admin_id()
-
-
-def main_keyboard() -> InlineKeyboardMarkup:
+def menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
             [InlineKeyboardButton("📅 Запись к врачу", url=BOOKING_URL)],
             [InlineKeyboardButton("🗺️ Как добраться", url=YANDEX_MAPS_URL)],
-            [InlineKeyboardButton("📞 Позвонить", callback_data=CB_CALL)],
+            [InlineKeyboardButton("Позвонить", callback_data=CB_CALL)],
             [InlineKeyboardButton("📸 Instagram", url=INSTAGRAM_URL)],
-            [InlineKeyboardButton("⭐ Оставьте честный отзыв и получите 10% скидки", url=YANDEX_REVIEW_URL)],
-            [InlineKeyboardButton("✍️ Написать админу", callback_data=CB_WRITE_ADMIN)],
+            [InlineKeyboardButton("⭐ Оставьте честный отзыв и получите 10% скидки", url=REVIEW_URL)],
+            [InlineKeyboardButton("✍️ Написать администратору", callback_data=CB_WRITE_ADMIN)],
         ]
     )
 
-
-def start_text() -> str:
-    return (
-        f"👓 *{CLINIC_NAME}*\n"
-        f"Онлайн-запись к врачу и контакты.\n\n"
-        f"Выберите действие ниже 👇"
-    )
-
-
-def admin_reply_keyboard(client_chat_id: int) -> InlineKeyboardMarkup:
+def admin_reply_keyboard(user_chat_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
-            [InlineKeyboardButton("💬 Ответить клиенту", callback_data=f"{CB_REPLY_PREFIX}{client_chat_id}")],
-            [InlineKeyboardButton("⛔️ Завершить ответ", callback_data=CB_STOP_REPLY)],
+            [InlineKeyboardButton("✍️ Ответить клиенту", callback_data=f"{CB_SETCHAT_PREFIX}{user_chat_id}")],
+            [InlineKeyboardButton("📋 Показать меню клиенту", callback_data=f"{CB_SETCHAT_PREFIX}{user_chat_id}:MENU")],
         ]
     )
 
+def who(update: Update) -> str:
+    u = update.effective_user
+    if not u:
+        return ""
+    parts = []
+    if u.full_name:
+        parts.append(u.full_name)
+    if u.username:
+        parts.append(f"@{u.username}")
+    return " · ".join(parts).strip()
 
-def reply_mode_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([[InlineKeyboardButton("⛔️ Завершить ответ", callback_data=CB_STOP_REPLY)]])
+def is_admin(chat_id: int) -> bool:
+    admin_id = int(os.getenv("ADMIN_CHAT_ID", str(DEFAULT_ADMIN_CHAT_ID)))
+    return chat_id == admin_id
 
+
+# =========================
+# ХЭНДЛЕРЫ
+# =========================
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    context.user_data["awaiting_admin_message"] = False
-    await update.effective_message.reply_text(
-        start_text(),
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=main_keyboard(),
-        disable_web_page_preview=True,
-    )
-
+    await update.message.reply_text(start_text(), reply_markup=menu_keyboard())
 
 async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    # Для админа: выключить "режим ответа клиенту"
+    if not update.effective_chat:
+        return
     if not is_admin(update.effective_chat.id):
         return
-    context.application.bot_data["active_client_chat_id"] = None
-    await update.message.reply_text("⛔️ Режим ответа выключен.")
 
+    context.application.bot_data[BOTDATA_ACTIVE_CHAT] = None
+    await update.message.reply_text("✅ Режим ответа клиенту выключен. Теперь сообщения не пересылаются клиенту автоматически.")
 
-async def on_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
-    await query.answer()  # чтобы не было вечной "загрузки"
+    if not query:
+        return
 
-    data = query.data
+    data = query.data or ""
+    chat_id = query.message.chat_id if query.message else None
+    await query.answer()
 
-    # Клиент: позвонить
+    # Нажал клиент: "Позвонить"
     if data == CB_CALL:
-        # Telegram не даёт tel: в URL кнопки. Поэтому отправляем номер одним сообщением.
-        # Без текста/эмодзи, чтобы точно был кликабельный для набора.
-        await query.message.reply_text(PHONE_CLICK)
+        # Никаких контакт-карточек. Только сообщение (номер кликабельный).
+        await query.message.reply_text(f"📞 Телефон: {PHONE_PRETTY}")
         return
 
-    # Клиент: написать админу
+    # Нажал клиент: "Написать администратору"
     if data == CB_WRITE_ADMIN:
-        context.user_data["awaiting_admin_message"] = True
-        await query.message.reply_text(
-            "✍️ Напишите, пожалуйста, сообщение — администратор ответит вам как можно скорее."
-        )
+        await query.message.reply_text("✍️ Напишите, пожалуйста, сообщение — администратор ответит вам как можно скорее.")
         return
 
-    # Админ: выбрать клиента для ответа
-    if data.startswith(CB_REPLY_PREFIX):
-        if not is_admin(query.message.chat_id):
+    # Админ выбрал клиента (без reply)
+    if data.startswith(CB_SETCHAT_PREFIX):
+        if not query.message:
             return
-        client_chat_id = int(data.split(":", 1)[1])
-        context.application.bot_data["active_client_chat_id"] = client_chat_id
+        if not chat_id or not is_admin(chat_id):
+            await query.message.reply_text("⛔ Эта кнопка доступна только администратору.")
+            return
+
+        payload = data[len(CB_SETCHAT_PREFIX):]
+
+        # Вариант: "SETCHAT:<id>:MENU" — просто показать меню клиенту
+        if payload.endswith(":MENU"):
+            user_chat_id = int(payload.replace(":MENU", ""))
+            await context.bot.send_message(chat_id=user_chat_id, text=start_text(), reply_markup=menu_keyboard())
+            await query.message.reply_text("✅ Меню отправлено клиенту.")
+            return
+
+        user_chat_id = int(payload)
+        context.application.bot_data[BOTDATA_ACTIVE_CHAT] = user_chat_id
 
         await query.message.reply_text(
-            f"💬 Режим ответа включён.\n"
-            f"Клиент chat_id: {client_chat_id}\n\n"
-            f"Теперь просто пишите сообщения — я отправлю их клиенту.",
-            reply_markup=reply_mode_keyboard(),
+            "✅ Вы выбрали клиента.\n"
+            "Теперь просто напишите сообщение — я отправлю его клиенту.\n\n"
+            "Чтобы выключить режим — /stop"
         )
         return
 
-    # Админ: выключить режим ответа
-    if data == CB_STOP_REPLY:
-        if is_admin(query.message.chat_id):
-            context.application.bot_data["active_client_chat_id"] = None
-            await query.message.reply_text("⛔️ Режим ответа выключен.")
+    if data == CB_MENU:
+        await query.message.reply_text(start_text(), reply_markup=menu_keyboard())
         return
 
 
-# -------------------------
-# КЛИЕНТ -> АДМИН
-# -------------------------
-async def client_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    chat_id = update.effective_chat.id
-    text = update.message.text
+async def user_text_to_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Любое обычное сообщение от клиента автоматически уходит админу."""
+    if not update.effective_chat or not update.message:
+        return
 
-    # админа не трогаем тут
+    chat_id = update.effective_chat.id
+
+    # Если это админ — не сюда
     if is_admin(chat_id):
         return
 
-    # если клиент нажал "Написать админу" — следующее сообщение улетает админу
-    if context.user_data.get("awaiting_admin_message"):
-        context.user_data["awaiting_admin_message"] = False
+    admin_id = int(os.getenv("ADMIN_CHAT_ID", str(DEFAULT_ADMIN_CHAT_ID)))
 
-        a_id = admin_id()
-        if not a_id:
-            await update.message.reply_text("⚠️ Администратор не настроен. Попробуйте позже.")
-            return
+    text = update.message.text or ""
+    user_name = who(update)
+    user_line = f"{user_name}\n" if user_name else ""
+    user_chat_line = f"Chat ID: {chat_id}"
 
-        user = update.effective_user
-        uname = f"@{user.username}" if user.username else "(без username)"
+    admin_text = (
+        "📩 Сообщение от клиента\n\n"
+        f"{user_line}{user_chat_line}\n\n"
+        f"Текст:\n{text}\n\n"
+        "⬇️ Нажмите кнопку ниже, чтобы ответить клиенту без Reply."
+    )
 
-        admin_text = (
-            f"📩 Сообщение от клиента\n"
-            f"• Имя: {user.full_name}\n"
-            f"• Username: {uname}\n"
-            f"• chat_id: {chat_id}\n\n"
-            f"{text}"
-        )
+    sent = await context.bot.send_message(
+        chat_id=admin_id,
+        text=admin_text,
+        reply_markup=admin_reply_keyboard(chat_id),
+    )
 
-        await context.bot.send_message(
-            chat_id=a_id,
-            text=admin_text,
-            reply_markup=admin_reply_keyboard(chat_id),
-        )
+    # Сохраняем связь admin_msg_id -> user_chat_id (если захочешь отвечать Reply-способом в будущем)
+    bot_data = context.application.bot_data
+    msg_map: Dict[int, int] = bot_data.get(BOTDATA_ADMIN_MSG_MAP, {})
+    msg_map[sent.message_id] = chat_id
+    bot_data[BOTDATA_ADMIN_MSG_MAP] = msg_map
 
-        await update.message.reply_text(
-            "✅ Спасибо! Сообщение отправлено администратору.\n\nВыберите действие ниже 👇",
-            reply_markup=main_keyboard(),
-        )
+    # Клиенту: подтверждение + меню
+    await update.message.reply_text(
+        "✅ Спасибо! Сообщение отправлено администратору.\n\nВыберите действие ниже 👇",
+        reply_markup=menu_keyboard(),
+    )
+
+
+async def admin_send_to_selected_client(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Если админ выбрал клиента кнопкой — любые сообщения админа идут клиенту (пока не /stop)."""
+    if not update.effective_chat or not update.message:
         return
 
-    # любое другое сообщение — показываем меню
-    await update.message.reply_text("Выберите действие ниже 👇", reply_markup=main_keyboard())
-
-
-# -------------------------
-# АДМИН -> КЛИЕНТ (без Reply)
-# -------------------------
-async def admin_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not is_admin(update.effective_chat.id):
+    chat_id = update.effective_chat.id
+    if not is_admin(chat_id):
         return
 
-    active = context.application.bot_data.get("active_client_chat_id")
-    if not active:
-        await update.message.reply_text(
-            "ℹ️ Сначала выберите клиента: нажмите “💬 Ответить клиенту” под сообщением клиента."
-        )
+    active_user_chat: Optional[int] = context.application.bot_data.get(BOTDATA_ACTIVE_CHAT)
+    if not active_user_chat:
+        return  # админ не в режиме ответа
+
+    text = update.message.text or ""
+    if not text.strip():
         return
 
-    text = update.message.text
-    await context.bot.send_message(chat_id=active, text=f"✅ Ответ администратора:\n\n{text}")
-    await update.message.reply_text("Отправлено ✅", reply_markup=reply_mode_keyboard())
+    # Отправляем клиенту
+    await context.bot.send_message(
+        chat_id=active_user_chat,
+        text=f"✅ Ответ администратора:\n\n{text}",
+        reply_markup=menu_keyboard(),
+    )
 
-
-def build_app() -> Application:
-    token = os.getenv("BOT_TOKEN", "").strip()
-    if not token:
-        raise SystemExit("BOT_TOKEN не найден. Добавь BOT_TOKEN в Railway Variables.")
-
-    app = Application.builder().token(token).build()
-
-    app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(CommandHandler("stop", cmd_stop))
-    app.add_handler(CallbackQueryHandler(on_buttons))
-
-    # Сначала админские сообщения, потом клиентские
-    a_id = admin_id()
-    if a_id:
-        app.add_handler(
-            MessageHandler(filters.TEXT & filters.Chat(chat_id=a_id) & ~filters.COMMAND, admin_text_router)
-        )
-
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, client_text_router))
-
-    return app
+    await update.message.reply_text("✅ Отправлено клиенту. (Чтобы выйти из режима — /stop)")
 
 
 def main() -> None:
-    app = build_app()
+    token = os.getenv("BOT_TOKEN")
+    if not token:
+        raise SystemExit("Ошибка: не найден BOT_TOKEN. Добавь переменную окружения BOT_TOKEN в Railway.")
+
+    app = Application.builder().token(token).build()
+
+    # Команды
+    app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("stop", cmd_stop))
+
+    # Кнопки
+    app.add_handler(CallbackQueryHandler(on_button))
+
+    # Админ: если выбрал клиента — любые сообщения идут клиенту
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, admin_send_to_selected_client), group=0)
+
+    # Клиент: любое сообщение уходит админу
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, user_text_to_admin), group=1)
+
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":
     main()
-
-
