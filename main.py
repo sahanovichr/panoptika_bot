@@ -51,13 +51,14 @@ BOTDATA_ADMIN_MSG_MAP = "admin_msgid_to_userchat"  # {admin_msg_id: user_chat_id
 # =========================
 
 def start_text() -> str:
-    # Время работы — только здесь, как ты и просил
     return (
-        f"{BOT_TITLE}\n"
-        f"{GREETING_SUBTITLE}\n\n"
-        f"⏰ Время работы: {WORK_HOURS}\n\n"
+        "Добро пожаловать в салон оптики!\n"
+        "Онлайн-запись к врачу и контакты.\n\n"
+        "⏰ Время работы:\n"
+        f"{WORK_HOURS}\n\n"
         "Выберите действие ниже 👇"
     )
+
 
 def menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
