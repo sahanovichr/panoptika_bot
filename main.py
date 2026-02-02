@@ -42,7 +42,8 @@ PHONE_CLICK = "+3753365188747"  # кликабельный вариант (бе�
 
 WORK_HOURS_TEXT = (
     "⏰ <b>Время работы</b>:\n"
-    "Пн–Пт 10:00–20:00 · Сб–Вс 10:00–18:00"
+    "Пн–Пт 10:00–20:00\n" 
+    "Сб–Вс 10:00–18:00"
 )
 
 # SQLite
@@ -332,9 +333,9 @@ async def cb_back_main(callback: CallbackQuery, state: FSMContext):
 
 @dp.callback_query(F.data == CB_CONTACTS_CALL)
 async def cb_contacts_call(callback: CallbackQuery):
-    # Показываем красиво + кликабельный номер
+    # Показываем кликабельный номер
     await callback.message.answer(
-        f"📞 Телефон: {PHONE_PRETTY}\n{PHONE_CLICK}"
+        f"📞 Телефон: {PHONE_CLICK}"
     )
     await callback.answer()
 
