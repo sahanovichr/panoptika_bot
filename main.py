@@ -142,7 +142,7 @@ def kb_contacts() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🕒 Время работы", callback_data=CB_CONTACTS_HOURS)],
         [InlineKeyboardButton(text="↩️ Назад", callback_data=CB_BACK_MAIN)],
     ])
-        ]
+        
     )
 
 # =========================
