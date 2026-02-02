@@ -140,8 +140,7 @@ def kb_contacts() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🗺 Как добраться (карта)", url=YANDEX_MAP_URL)],
         [InlineKeyboardButton(text="📞 Позвонить", callback_data=CB_CONTACTS_CALL)],
         [InlineKeyboardButton(text="🕒 Время работы", callback_data=CB_CONTACTS_HOURS)],
-        [InlineKeyboardButton(text="↩️ Назад", callback_data=CB_BACK_MAIN)],
-    ])
+        [InlineKeyboardButton(text="↩️ Назад", callback_data=CB_BACK_MAIN)])
         
     )
 
