@@ -38,10 +38,20 @@ INSTAGRAM_URL = "https://www.instagram.com/panoptika_brest?igsh=MTlmYndrbXlwZ3hm
 WEBSITE_URL = "https://panoptika.by/"
 
 # Адрес / телефон / график
+PHONE_NUMBER_CLICK = "+3753365188747"      # кликабельный вариант (цифры)
+PHONE_NUMBER_PRETTY = "+375 33 651-87-47"  # красивый в тексте
+
+WORK_HOURS_TEXT = (
+    "Пн–Пт 10:00–20:00\n"
+    "Сб–Вс 10:00–18:00"
+)
+
 ADDRESS_TEXT = "Брест, ул. Пушкинская 6/1"
-PHONE_PRETTY = "+375 33 651-87-47"
-PHONE_PLAIN = "+375336518747"  # для tel: ссылки (без пробелов)
-WORK_HOURS_TEXT = "Пн–Пт 10:00–20:00 · Сб–Вс 10:00–18:00"
+
+CB_CONTACTS_CALL = "contacts_call"
+CB_CONTACTS_HOURS = "contacts_hours"
+CB_BACK_MAIN = "back_main"
+
 
 # SQLite база
 DB_PATH = "panoptika.db"
@@ -84,6 +94,8 @@ def kb_main() -> ReplyKeyboardMarkup:
         selective=True,
     )
 
+
+
 def kb_back_menu() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="↩️ Назад в меню")]],
@@ -121,14 +133,15 @@ def kb_promos() -> InlineKeyboardMarkup:
         ]
     )
 
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
 def kb_contacts() -> InlineKeyboardMarkup:
-    tel_url = f"tel:{PHONE_PLAIN}"
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="🗺 Как добраться (Яндекс.Карты)", url=YANDEX_MAP_URL)],
-            [InlineKeyboardButton(text="📞 Позвонить", url=tel_url)],
-            [InlineKeyboardButton(text="🕒 Время работы", callback_data="work_hours")],
-            [InlineKeyboardButton(text="↩️ Назад", callback_data="back_main")],
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗺 Как добраться (карта)", url=YANDEX_MAP_URL)],
+        [InlineKeyboardButton(text="📞 Позвонить", callback_data=CB_CONTACTS_CALL)],
+        [InlineKeyboardButton(text="🕒 Время работы", callback_data=CB_CONTACTS_HOURS)],
+        [InlineKeyboardButton(text="↩️ Назад", callback_data=CB_BACK_MAIN)],
+    ])
         ]
     )
 
@@ -325,18 +338,37 @@ async def handle_phone_input(message: Message, state: FSMContext) -> None:
 # ---- 4) CONTACTS ----
 @dp.message(F.text == "📍 Адрес и контакты")
 async def contacts_button(message: Message) -> None:
-    user_in_admin_chat[message.from_user.id] = False
-    await message.answer(
-        "📍 <b>Адрес и контакты</b>\n"
-        f"Адрес: <b>{ADDRESS_TEXT}</b>\n"
-        f"Телефон: <b>{PHONE_PRETTY}</b>\n",
-        reply_markup=kb_contacts(),
+    text = (
+        "📍 Адрес и контакты\n\n"
+        f"{ADDRESS_TEXT}\n"
+        f"{PHONE_NUMBER_PRETTY}\n\n"
+        "Выберите действие ниже 👇"
+    )
+    await message.answer(text, reply_markup=kb_contacts(), disable_web_page_preview=True)
+
     )
 
 @dp.callback_query(F.data == "work_hours")
 async def cb_work_hours(callback: CallbackQuery) -> None:
     await callback.message.answer(f"🕒 <b>Время работы</b>\n{WORK_HOURS_TEXT}")
     await callback.answer()
+
+@dp.callback_query(F.data == CB_CONTACTS_CALL)
+async def cb_contacts_call(callback: CallbackQuery) -> None:
+    await callback.message.answer(f"📞 Телефон: {PHONE_NUMBER_PRETTY}\n{PHONE_NUMBER_CLICK}")
+    await callback.answer()
+
+@dp.callback_query(F.data == CB_CONTACTS_HOURS)
+async def cb_contacts_hours(callback: CallbackQuery) -> None:
+    await callback.message.answer(f"⏰ Время работы:\n{WORK_HOURS_TEXT}")
+    await callback.answer()
+
+@dp.callback_query(F.data == CB_BACK_MAIN)
+async def cb_back_main(callback: CallbackQuery) -> None:
+    await callback.message.answer("Главное меню:", reply_markup=kb_main())
+    await callback.answer()
+
+
 
 # ---- BACK TO MENU ----
 @dp.callback_query(F.data == "back_main")
