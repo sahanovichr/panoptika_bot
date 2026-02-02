@@ -186,7 +186,13 @@ async def db_add_demo(phone: str, status: str, order_no: str = "", comment: str 
 # =========================
 # BOT
 # =========================
-bot = Bot(token=BOT_TOKEN, parse_mode=ParseMode.HTML)
+from aiogram.client.default import DefaultBotProperties
+
+bot = Bot(
+    token=BOT_TOKEN,
+    default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+)
+
 dp = Dispatcher()
 
 def is_admin(message: Message) -> bool:
